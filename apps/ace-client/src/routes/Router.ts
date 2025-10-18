@@ -1,6 +1,8 @@
 import Analytics from "@/pages/Analytics/Analytics";
 import Dashboard from "@/pages/Dashboard/Dashboard";
+import EventCreateMultiStep from "@/pages/Events/EventCreate/EventCreate";
 import Events from "@/pages/Events/Events";
+import EventsList from "@/pages/Events/EventsList";
 import Home from "@/pages/Home";
 import MainLayout from "@/pages/MainLayout";
 import Payments from "@/pages/Payments/Payments";
@@ -39,6 +41,13 @@ export const router = createBrowserRouter([
         path: "/events",
         loader: authGuard,
         Component: Events,
+        children: [
+          {
+            index: true,
+            Component: EventsList,
+          },
+          { path: "create", Component: EventCreateMultiStep },
+        ],
       },
       {
         path: "/payments",
