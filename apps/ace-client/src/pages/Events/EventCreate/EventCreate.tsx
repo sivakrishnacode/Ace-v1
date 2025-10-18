@@ -1,6 +1,4 @@
-import { z } from "zod";
-import { useForm, FormProvider } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { FormProvider } from "react-hook-form";
 import { defineStepper } from "@stepperize/react";
 
 // shadcn/ui
@@ -8,18 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form } from "@/components/ui/form";
 
-import type { Resolver } from "react-hook-form";
-import { EventCreateOne, EventCreateThree } from "./EventCreateSteps";
-import {
-  eachDate,
-  hasOverlaps,
-  isHHMM,
-  toMinutes,
-  type Period,
-  type PeriodsByDate,
-} from "./utils";
-import { EventCreateTwo } from "./EventCreateStepTwo";
-import { currentDateISO, nextDateISO } from "@/lib/utils";
+import { EventCreateTwo } from "./Steptwo/EventCreate.STwo";
+import { EventCreateOne } from "./StepOne/EventCreateStepOne";
+import EventCreateThree from "./StepThree/EventCreate.SThree";
+import { EventSummery } from "./summery/EventSummery";
+import { useMultiStepForm } from "./Schemas";
+import type { FullEventValues } from "./Schemas";
 
 // ─────────────────────────────────────────────────────────────
 // Stepper
@@ -27,180 +19,21 @@ import { currentDateISO, nextDateISO } from "@/lib/utils";
 const stepper = defineStepper(
   { id: "step-1", title: "Event Info" },
   { id: "step-2", title: "Schedule & Pricing" },
-  { id: "step-3", title: "Review & Publish" }
+  { id: "step-3", title: "Review & Publish" },
+  { id: "summery", title: "Summery" }
 );
-
-// ─────────────────────────────────────────────────────────────
-// Zod Schema (no legacy single-slot fields)
-// ─────────────────────────────────────────────────────────────
-const zTime = z.string().refine(isHHMM, "Use HH:MM (24h)");
-
-const zPeriod = z
-  .object({
-    startTime: zTime,
-    endTime: zTime,
-    type: z.string().max(64).optional().nullable(),
-  })
-  .refine((p) => toMinutes(p.endTime) > toMinutes(p.startTime), {
-    message: "End time must be after start time",
-    path: ["endTime"],
-  });
-
-const zPeriodsByDate = z.record(
-  z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
-  z.array(zPeriod).min(1, "Add at least one period for this day")
-);
-
-export const formSchema = z
-  .object({
-    // core
-    title: z.string().min(3, "Title must be at least 3 characters"),
-    category: z.enum(["Education", "Entertainment", "Sports", "Networking"], {
-      error: () => ({ message: "Choose a category" }),
-    }),
-    mode: z.enum(["Online", "Offline", "Hybrid"], {
-      error: () => ({ message: "Select a mode" }),
-    }),
-    description: z.string().min(20, "Write at least 20 characters"),
-    tags: z.array(z.string()).optional(),
-
-    // dates
-    startDate: z.coerce.date({
-      error: () => ({ message: "Enter a valid start date" }),
-    }),
-    endDate: z.coerce.date({
-      error: () => ({ message: "Enter a valid end date" }),
-    }),
-
-    // pricing
-    currency: z.enum(["INR", "USD", "EUR"]).default("INR"),
-    price: z.coerce
-      .number({ error: "Enter a valid amount" })
-      .nonnegative("Amount cannot be negative")
-      .max(99999999, "Amount too large")
-      .multipleOf(0.01, "Use at most 2 decimals"),
-
-    agree: z.literal(true),
-
-    // multi-day schedule
-    sameTimeForAllDates: z.boolean().default(false),
-    defaultPeriods: z.array(zPeriod).default([]),
-    periodsByDate: zPeriodsByDate.default({}),
-  })
-
-  .superRefine((data, ctx) => {
-    const start = new Date(data.startDate);
-    const end = new Date(data.endDate);
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["startDate"],
-        message: "Enter valid dates",
-      });
-      return;
-    }
-    if (end < start) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["endDate"],
-        message: "End must be after start",
-      });
-    }
-
-    const days = eachDate(start, end);
-
-    if (data.sameTimeForAllDates) {
-      if (data.defaultPeriods.length === 0) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["defaultPeriods"],
-          message: "Add at least one period",
-        });
-      }
-      if (hasOverlaps(data.defaultPeriods)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["defaultPeriods"],
-          message: "Periods overlap — fix timings",
-        });
-      }
-    } else {
-      const keys = Object.keys(data.periodsByDate);
-      const missing = days.filter((d) => !(d in data.periodsByDate));
-      if (missing.length > 0) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["periodsByDate"],
-          message: `Add periods for all days: missing ${missing.join(", ")}`,
-        });
-      }
-      const extras = keys.filter((k) => !days.includes(k));
-      if (extras.length > 0) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["periodsByDate"],
-          message: `Remove dates outside range: ${extras.join(", ")}`,
-        });
-      }
-      for (const d of keys) {
-        if (hasOverlaps(data.periodsByDate[d] ?? [])) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["periodsByDate", d],
-            message: "Periods overlap — fix timings",
-          });
-        }
-      }
-    }
-  });
-
-export type UIFormValues = z.infer<typeof formSchema>;
-
-// seed (your JSON)
-const defaultJson = {
-  startDate: currentDateISO(),
-  endDate: nextDateISO(),
-  sameTimeForAllDates: true,
-  defaultPeriods: [] as Period[],
-  periodsByDate: {} as PeriodsByDate,
-};
-
-export type FormValues = z.output<typeof formSchema>;
 
 export default function EventCreateMultiStep() {
   const steps = stepper.useStepper({ initialStep: "step-1" });
 
-  const resolver = zodResolver(formSchema) as Resolver<FormValues>;
+  const form = useMultiStepForm();
 
-  const form = useForm<UIFormValues>({
-    resolver,
-    mode: "onChange",
-    shouldUnregister: false,
-    defaultValues: {
-      title: "sdafdsfdf",
-      category: undefined as unknown as UIFormValues["category"],
-      mode: undefined as unknown as UIFormValues["mode"],
-      description: "dsfsdfdsfdsfdsfdsfsdfsdf",
-      tags: [],
-
-      startDate: new Date(defaultJson.startDate),
-      endDate: new Date(defaultJson.endDate),
-      sameTimeForAllDates: defaultJson.sameTimeForAllDates,
-      defaultPeriods: defaultJson.defaultPeriods,
-      periodsByDate: defaultJson.periodsByDate,
-
-      currency: "INR",
-      price: 0,
-      agree: true,
-    },
-  });
-
-  const onSubmit = (values: UIFormValues) => {
+  const onSubmit = (values: FullEventValues) => {
     console.log("Submitting:", values);
     alert("Event created! Check console for payload.");
   };
 
-  const stepFields: Record<string, (keyof UIFormValues)[]> = {
+  const stepFields: Record<string, (keyof FullEventValues)[]> = {
     "step-1": ["title", "category", "mode", "description", "tags"],
     "step-2": [
       "startDate",
@@ -256,9 +89,10 @@ export default function EventCreateMultiStep() {
           <FormProvider {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
               {steps.switch({
-                "step-1": () => EventCreateOne(form),
-                "step-2": () => EventCreateTwo(form),
-                "step-3": () => EventCreateThree(form, form.watch()),
+                "step-1": () => <EventCreateOne />, // ✅ JSX component
+                "step-2": () => <EventCreateTwo />,
+                "step-3": () => <EventCreateThree />,
+                summery: () => <EventSummery />,
               })}
 
               <div className="flex items-center justify-between gap-2">
@@ -270,9 +104,20 @@ export default function EventCreateMultiStep() {
                 >
                   Back
                 </Button>
-                <Button type="button" onClick={handleNext}>
-                  {steps.isLast ? "Submit" : "Next"}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant={"secondary"}
+                    onClick={() => {
+                      steps.reset(); //
+                      form.reset();
+                    }}
+                  >
+                    Reset
+                  </Button>
+                  <Button type="button" onClick={handleNext}>
+                    {steps.isLast ? "Submit" : "Next"}
+                  </Button>
+                </div>
               </div>
             </form>
           </FormProvider>

@@ -3,8 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import React from "react";
 import { Controller, useFieldArray, useFormContext } from "react-hook-form";
-import { eachDate } from "./utils";
-import type { FormValues, UIFormValues } from "./EventCreate";
+import { eachDate } from "../utils";
 import { Badge } from "@/components/ui/badge";
 import {
   FormControl,
@@ -15,6 +14,7 @@ import {
 } from "@/components/ui/form";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
+import { type FullEventValues } from "../Schemas";
 
 function PeriodListEditor({
   name,
@@ -23,8 +23,11 @@ function PeriodListEditor({
   name: `defaultPeriods` | `periodsByDate.${string}`;
   emptyHint?: string;
 }) {
-  const { control } = useFormContext<UIFormValues>();
-  const { fields, append, remove } = useFieldArray({ control, name });
+  const form = useFormContext<FullEventValues>();
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name,
+  });
 
   return (
     <div className="space-y-3">
@@ -44,7 +47,13 @@ function PeriodListEditor({
             render={({ field, fieldState }) => (
               <div className="space-y-1">
                 <Label>Start (HH:MM)</Label>
-                <Input placeholder="08:00" {...field} />
+
+                <Input
+                  type="time"
+                  id="time-picker"
+                  {...field}
+                  className="bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+                />
                 {fieldState.error && (
                   <p className="text-xs text-destructive">
                     {fieldState.error.message}
@@ -58,7 +67,12 @@ function PeriodListEditor({
             render={({ field, fieldState }) => (
               <div className="space-y-1">
                 <Label>End (HH:MM)</Label>
-                <Input placeholder="16:00" {...field} />
+                <Input
+                  type="time"
+                  id="time-picker"
+                  {...field}
+                  className="bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+                />
                 {fieldState.error && (
                   <p className="text-xs text-destructive">
                     {fieldState.error.message}
@@ -100,11 +114,9 @@ function PeriodListEditor({
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Per-Day Editor (renders all dates in range)
-// ─────────────────────────────────────────────────────────────
 function PerDayEditor() {
-  const form = useFormContext<UIFormValues>();
+  const form = useFormContext<FullEventValues>();
+
   const start = form.watch("startDate");
   const end = form.watch("endDate");
 
@@ -116,10 +128,6 @@ function PerDayEditor() {
       return [];
     }
   }, [start, end]);
-
-  console.log("====================================");
-  console.log(start, end, days);
-  console.log("====================================");
 
   // ensure an entry exists in periodsByDate when we render
   React.useEffect(() => {
@@ -182,10 +190,9 @@ function PerDayEditor() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Step 2 – Schedule & Pricing
-// ─────────────────────────────────────────────────────────────
-export function EventCreateTwo(form: FormValues & any) {
+export function EventCreateTwo() {
+  const form = useFormContext<FullEventValues>();
+
   return (
     <div className="grid gap-8">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
